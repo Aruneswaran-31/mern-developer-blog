@@ -1,39 +1,72 @@
-import express, { Application, Request, Response } from "express";
+import express from "express";
 import mongoose from "mongoose";
+import cors from "cors";
 import dotenv from "dotenv";
+import path from "node:path";
 import blogRoutes from "./routes/blogRoutes";
 import userRoutes from "./routes/userRoutes";
 import tagRoutes from "./routes/tagRoutes";
-import cookieParser from "cookie-parser";
 
 dotenv.config();
 
-const app: Application = express();
-const PORT: string | number = process.env.PORT || 4000;
+const app = express();
+const PORT = Number(process.env.PORT) || 4000;
+const MONGODB_URI = process.env.MONGODB_URI;
+const isProduction = process.env.NODE_ENV === "production";
 
-// Middleware
-app.use(express.json());
-app.use(cookieParser());
+app.use(
+  cors({
+    origin: process.env.CLIENT_ORIGIN?.split(",") ?? true,
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: "1mb" }));
 
-// Routes
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    database: mongoose.connection.readyState === 1 ? "connected" : "down",
+  });
+});
+
 app.use("/api/blogs", blogRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tags", tagRoutes);
 
-// Default route
-app.get("/", (req: Request, res: Response) => {
-  res.send("MERN Blogging Platform API");
+app.use("/api", (_req, res) => {
+  res.status(404).json({ message: "Endpoint not found" });
 });
 
-// Connect to MongoDB and start server
-mongoose
-  .connect(process.env.MONGODB_URI as string)
-  .then(() => {
-    console.log("Connected to MongoDB");
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch((error: Error) => {
-    console.error("MongoDB connection error:", error);
+// Serve the built React app when running in production.
+if (isProduction) {
+  const clientDir = path.resolve(process.cwd(), "dist");
+  app.use(express.static(clientDir));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
   });
+}
+
+async function start() {
+  if (!MONGODB_URI) {
+    console.error(
+      "MONGODB_URI is not set. Copy .env.example to .env and add your connection string."
+    );
+    process.exit(1);
+  }
+
+  if (!process.env.JWT_SECRET) {
+    console.error("JWT_SECRET is not set. Add one to your .env file.");
+    process.exit(1);
+  }
+
+  await mongoose.connect(MONGODB_URI);
+
+  app.listen(PORT, () => {
+    console.log(`API listening on http://localhost:${PORT}`);
+  });
+}
+
+start().catch((error) => {
+  console.error("Failed to start the API:", error);
+  process.exit(1);
+});

@@ -1,33 +1,41 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import Tag from "../models/Tag";
+import Blog from "../models/Blog";
 
 const router = express.Router();
 
-// Get all tags
-router.get("/", async (req: Request, res: Response) => {
+// GET /api/tags
+router.get("/", async (_req, res) => {
   try {
-    const tags = await Tag.find().sort({ name: 1 });
-    res.status(200).json(tags);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    const tags = await Tag.find().sort({ name: 1 }).lean();
+    return res.status(200).json(
+      tags.map((tag) => ({ name: tag.name, slug: tag.slug }))
+    );
+  } catch {
+    return res.status(500).json({ message: "Could not load tags" });
   }
 });
 
-// Get blog posts by tag
-router.get("/:slug/blogs", async (req: Request, res: Response) => {
+// GET /api/tags/:slug/blogs
+router.get("/:slug/blogs", async (req, res) => {
   try {
-    const tag = await Tag.findOne({ slug: req.params.slug });
-    if (!tag) {
+    const slug = req.params.slug.toLowerCase();
+
+    const [tag, blogs] = await Promise.all([
+      Tag.findOne({ slug }).lean(),
+      Blog.find({ tags: slug })
+        .populate("author", "username avatar bio")
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    if (!tag && blogs.length === 0) {
       return res.status(404).json({ message: "Tag not found" });
     }
 
-    const blogs = await Blog.find({ tags: tag._id })
-      .populate("author", "username avatar bio")
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({ tag, blogs });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    return res.status(200).json({ tag, blogs });
+  } catch {
+    return res.status(500).json({ message: "Could not load the tag" });
   }
 });
 

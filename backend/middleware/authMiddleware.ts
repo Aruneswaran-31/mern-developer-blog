@@ -1,31 +1,59 @@
+import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
-export const authMiddleware = (req: any, res: Response, next: Function) => {
+export interface AuthPayload {
+  userId: string;
+  username: string;
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: AuthPayload;
+    }
+  }
+}
+
+export function signToken(payload: AuthPayload): string {
+  return jwt.sign(payload, process.env.JWT_SECRET as string, {
+    expiresIn: "7d",
+  });
+}
+
+/** Reject the request unless it carries a valid bearer token. */
+export default function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const header = req.headers.authorization;
+
+  if (!header?.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = header.slice(7).trim();
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
   try {
-    const authHeader = req.headers.authorization;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as
+      | AuthPayload
+      | jwt.JwtPayload;
 
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "No token provided" });
+    if (!("userId" in decoded) || !decoded.userId) {
+      return res.status(401).json({ message: "Invalid token" });
     }
-
-    const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({ message: "No token provided" });
-    }
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    );
 
     req.user = {
-      userId: decoded.userId,
-      username: decoded.username,
+      userId: String(decoded.userId),
+      username: String(decoded.username ?? ""),
     };
 
     next();
-  } catch (error: any) {
-    res.status(401).json({ message: "Invalid or expired token" });
+  } catch {
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
-};
+}

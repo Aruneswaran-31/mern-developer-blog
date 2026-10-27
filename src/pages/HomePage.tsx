@@ -1,198 +1,277 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import BlogCard from "../components/BlogCard";
-import { useSearchParams } from "react-router-dom";
+import { api } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import type { Blog, Tag } from "../types";
 
-const HomePage = () => {
+export default function HomePage() {
   const { user } = useAuth();
-  const [blogs, setBlogs] = useState<any[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTag = searchParams.get("tag") ?? "";
+  const query = searchParams.get("q") ?? "";
+
+  const [searchInput, setSearchInput] = useState(query);
+  const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const navigate = useNavigate();
-  const params = useParams();
+
+  // Keep the input in sync when the query parameter changes externally.
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
+  // Debounce typing into the ?q= parameter.
+  useEffect(() => {
+    if (searchInput === query) return;
+    const timer = setTimeout(() => {
+      const next = new URLSearchParams(searchParams);
+      if (searchInput.trim()) next.set("q", searchInput.trim());
+      else next.delete("q");
+      setSearchParams(next, { replace: true });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, query, searchParams, setSearchParams]);
 
   useEffect(() => {
-    const fetchBlogs = async () => {
-      try {
-        const url = new URL("/api/blogs", window.location.origin);
-        
-        if (tagFilter) {
-          url.searchParams.set("tag", tagFilter);
-        }
-        if (searchQuery) {
-          url.searchParams.set("search", searchQuery);
-        }
-        url.searchParams.set("page", "1");
-        url.searchParams.set("limit", "10");
+    let cancelled = false;
+    setLoading(true);
 
-        const response = await fetch(url);
-        const data = await response.json();
-        setBlogs(data.blogs);
+    api
+      .listBlogs({ tag: activeTag || undefined, search: query || undefined })
+      .then((result) => {
+        if (cancelled) return;
+        setBlogs(result.blogs);
+        setTotal(result.total);
         setError(null);
-      } catch (error: any) {
-        setError(error.message || "Failed to fetch blogs");
-      } finally {
-        setLoading(false);
-      }
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
+  }, [activeTag, query]);
 
-    fetchBlogs();
-  }, [tagFilter, searchQuery]);
+  useEffect(() => {
+    api.listTags().then(setTags).catch(() => setTags([]));
+  }, [blogs.length]);
 
-  const handleTagChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTagFilter(e.target.value);
-    setSearchQuery("");
+  const selectTag = (tag: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (tag) next.set("tag", tag);
+    else next.delete("tag");
+    setSearchParams(next);
   };
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setTagFilter(null);
-  };
+  const isFiltered = Boolean(activeTag || query);
+  const [featured, ...rest] = blogs;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b border-gray-200 p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-800">
-              Developer Blog
-            </h1>
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      {/* Hero */}
+      {!isFiltered && (
+        <section className="mb-10 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 px-6 py-10 text-white shadow-xl shadow-indigo-200/60 sm:px-10 sm:py-14">
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold tracking-wide uppercase">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+            {total} article{total === 1 ? "" : "s"} published
+          </p>
+          <h1 className="max-w-2xl text-3xl leading-tight font-extrabold tracking-tight sm:text-4xl">
+            A home for developers who write about what they build.
+          </h1>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-indigo-100 sm:text-base">
+            Publish Markdown articles with syntax-highlighted code, tag them by
+            technology, and share them with the community.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link
+              to={user ? "/write" : "/register"}
+              className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
+            >
+              {user ? "Write an article" : "Start writing"}
+            </Link>
+            <a
+              href="#feed"
+              className="rounded-xl border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Browse the feed
+            </a>
           </div>
-          
-          {user ? (
-            <>
-              <div className="hidden sm:flex items-center gap-2">
-                <span className="text-gray-700 text-sm">
-                  Welcome, {user.username}
+        </section>
+      )}
+
+      <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
+        <div id="feed">
+          {/* Controls */}
+          <div className="mb-6 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-900">
+                {isFiltered ? "Search results" : "Latest articles"}
+                <span className="ml-2 text-sm font-medium text-slate-400">
+                  {loading ? "" : `${total} found`}
                 </span>
+              </h2>
+
+              <div className="relative w-full sm:w-72">
+                <svg
+                  className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+                </svg>
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search articles, tags…"
+                  aria-label="Search articles"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-3 pl-9 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
               </div>
-              <button
-                onClick={() => navigate("/create")}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-              >
-                Write New Blog
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => navigate("/login")}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => navigate("/register")}
-                className="ml-3 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 text-sm font-medium"
-              >
-                Register
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
+            </div>
 
-      <main className="max-w-7xl mx-auto p-6">
-        {/* Tags Filter Section */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-700 mb-4">Explore by Technology</h2>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <button
-              onClick={() => setTagFilter(null)}
-              className={tagFilter === null 
-                ? "bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                : "bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setTagFilter("javascript")}
-              className={tagFilter === "javascript"
-                ? "bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                : "bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"}
-            >
-              JavaScript
-            </button>
-            <button
-              onClick={() => setTagFilter("typescript")}
-              className={tagFilter === "typescript"
-                ? "bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                : "bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"}
-            >
-              TypeScript
-            </button>
-            <button
-              onClick={() => setTagFilter("react")}
-              className={tagFilter === "react"
-                ? "bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                : "bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"}
-            >
-              React
-            </button>
-            <button
-              onClick={() => setTagFilter("nodejs")}
-              className={tagFilter === "nodejs"
-                ? "bg-blue-600 text-white px-4 py-2 rounded-md text-sm"
-                : "bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"}
-            >
-              Node.js
-            </button>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => selectTag("")}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    activeTag === ""
+                      ? "border-indigo-600 bg-indigo-600 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                  }`}
+                >
+                  All topics
+                </button>
+                {tags.map((tag) => (
+                  <button
+                    key={tag.slug}
+                    type="button"
+                    onClick={() => selectTag(tag.slug)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      activeTag === tag.slug
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                  >
+                    #{tag.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="self-start text-xs font-semibold text-indigo-600 hover:underline"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
-        </div>
 
-        {/* Search Section */}
-        <div className="mb-6">
-          <div className="relative">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search blogs..."
-              value={searchQuery}
-              onChange={handleSearch}
-              className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-        </div>
-
-        {/* Blogs Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Feed */}
           {loading ? (
-            <div className="col-span-2 py-8 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((key) => (
+                <div
+                  key={key}
+                  className="h-52 animate-pulse rounded-2xl border border-slate-200 bg-white"
+                />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
+              {error}
             </div>
           ) : blogs.length === 0 ? (
-            <div className="col-span-2 py-8 text-center text-gray-500">
-              <p>No blogs found matching your criteria.</p>
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+              <p className="text-lg font-semibold text-slate-800">
+                Nothing here yet
+              </p>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+                No articles match this search. Try another keyword or clear the
+                filters.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="mt-5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                Show all articles
+              </button>
             </div>
           ) : (
-            blogs.map((blog) => (
-              <BlogCard
-                key={blog._id}
-                blog={blog}
-                user={user}
-              />
-            ))
+            <div className="grid gap-5 sm:grid-cols-2">
+              {!isFiltered && featured && (
+                <div className="sm:col-span-2">
+                  <BlogCard blog={featured} featured />
+                </div>
+              )}
+              {(isFiltered ? blogs : rest).map((blog) => (
+                <BlogCard key={blog._id} blog={blog} />
+              ))}
+            </div>
           )}
         </div>
-      </main>
+
+        {/* Sidebar */}
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-bold tracking-wide text-slate-900 uppercase">
+              Trending tags
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tags.slice(0, 10).map((tag) => (
+                <button
+                  key={tag.slug}
+                  type="button"
+                  onClick={() => selectTag(tag.slug)}
+                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-600"
+                >
+                  #{tag.name}
+                </button>
+              ))}
+              {tags.length === 0 && (
+                <p className="text-xs text-slate-400">No tags yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-bold tracking-wide text-slate-900 uppercase">
+              Write here
+            </h3>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Share a tutorial, a debugging war story or the internals of
+              something you just learned.
+            </p>
+            <Link
+              to={user ? "/write" : "/register"}
+              className="mt-4 block rounded-xl bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              {user ? "New article" : "Create an account"}
+            </Link>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-xs leading-5 text-slate-500">
+            Built with MongoDB, Express, React, Node.js, JWT and Markdown.
+          </div>
+        </aside>
+      </div>
     </div>
   );
-};
-
-export default HomePage;
+}

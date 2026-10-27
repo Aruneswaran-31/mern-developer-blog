@@ -1,113 +1,103 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import jwt_decode from "jwt-decode";
-import axios from "axios";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { api, apiMode, tokenStore, type ApiMode } from "../lib/api";
+import { demoSetSession } from "../lib/demo";
+import type { User } from "../types";
 
-interface User {
-  id: string;
-  username: string;
-  email: string;
-  avatar?: string;
-  bio?: string;
-}
-
-interface AuthContextType {
+interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  mode: ApiMode | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string
+  ) => Promise<void>;
   logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export const useAuth = (): AuthContextType => {
+export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-};
+}
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [mode, setMode] = useState<ApiMode | null>(null);
 
-  const login = async (email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const response = await axios.post("/api/users/login", { email, password });
-      const { token } = response.data;
-
-      // Store token in localStorage
-      localStorage.setItem("authToken", token);
-
-      // Decode token to get user info
-      const decoded: any = jwt_decode(token);
-      setUser({
-        id: decoded.userId,
-        username: decoded.username,
-        email,
-      });
-      setIsAuthenticated(true);
-    } catch (error: any) {
-      console.error("Login failed:", error.response?.data || error.message);
-      setIsAuthenticated(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const register = async (username: string, email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const response = await axios.post("/api/users/register", { username, email, password });
-      const { token } = response.data;
-
-      localStorage.setItem("authToken", token);
-
-      const decoded: any = jwt_decode(token);
-      setUser({
-        id: decoded.userId,
-        username: decoded.username,
-        email,
-      });
-      setIsAuthenticated(true);
-    } catch (error: any) {
-      console.error("Registration failed:", error.response?.data || error.message);
-      setIsAuthenticated(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = () => {
-    localStorage.removeItem("authToken");
-    setUser(null);
-    setIsAuthenticated(false);
-  };
-
-  // Check existing token on mount
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      const decoded: any = jwt_decode(token);
-      setUser({
-        id: decoded.userId,
-        username: decoded.username,
-        email: decoded.email,
-      });
-      setIsAuthenticated(true);
-    }
-    setIsLoading(false);
+    let cancelled = false;
+
+    (async () => {
+      const resolved = await apiMode();
+      if (cancelled) return;
+      setMode(resolved);
+
+      const current = await api.me();
+      if (cancelled) return;
+      if (current) setUser(current);
+      setIsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const { token, user: signedIn } = await api.login(email, password);
+    tokenStore.set(token);
+    setUser(signedIn);
+  }, []);
+
+  const register = useCallback(
+    async (username: string, email: string, password: string) => {
+      const { token, user: created } = await api.register(
+        username,
+        email,
+        password
+      );
+      tokenStore.set(token);
+      setUser(created);
+    },
+    []
+  );
+
+  const logout = useCallback(() => {
+    tokenStore.clear();
+    demoSetSession(null);
+    setUser(null);
   }, []);
 
   return (
-    <AuthContext value={{ user, isAuthenticated, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: Boolean(user),
+        isLoading,
+        mode,
+        login,
+        register,
+        logout,
+      }}
+    >
       {children}
-    </AuthContext>
+    </AuthContext.Provider>
   );
-};
+}
 
 export default AuthContext;

@@ -1,82 +1,73 @@
-import React from "react";
-import ReactMarkdown from "react-markdown";
-import { leader as syntaxHighlight } from "syntax-highlighter";
-import { langAuto, style Dracula } from "syntax-highlighter";
-import "syntax-highlighter/build/themes/dracula.css";
+import { Link } from "react-router-dom";
+import Avatar from "./Avatar";
+import { formatDate } from "../lib/format";
+import type { Blog } from "../types";
 
 interface BlogCardProps {
-  blog: any;
-  user: any;
+  blog: Blog;
+  featured?: boolean;
 }
 
-const BlogCard: React.FC<BlogCardProps> = ({ blog, user }) => {
-  const isAuthor = user && blog.author._id === user.id;
-
-  // Extract read time from blog or calculate
-  const readTime = blog.readTime || 1;
-
-  // Format date
-  const formattedDate = new Date(blog.createdAt).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-
+export default function BlogCard({ blog, featured = false }: BlogCardProps) {
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-      <div className="p-5 flex flex-col min-h-[300px]">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3
-              className="text-lg font-semibold text-gray-800 line-clamp-2"
-            >
-              {blog.title}
-            </h3>
-            <p className="mt-2 text-sm text-gray-500 line-clamp-2">
-              {blog.description}
-            </p>
+    <article
+      className={`group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/60 ${
+        featured ? "sm:p-7" : ""
+      }`}
+    >
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {blog.tags.slice(0, featured ? 4 : 3).map((tag) => (
+          <Link
+            key={tag}
+            to={`/?tag=${encodeURIComponent(tag)}`}
+            className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-indigo-600 uppercase transition hover:bg-indigo-100"
+          >
+            #{tag}
+          </Link>
+        ))}
+      </div>
+
+      <h3
+        className={`font-bold tracking-tight text-slate-900 ${
+          featured ? "text-2xl" : "text-lg"
+        }`}
+      >
+        <Link
+          to={`/blog/${blog.slug}`}
+          className="line-clamp-2 decoration-indigo-300 decoration-2 underline-offset-4 group-hover:underline"
+        >
+          {blog.title}
+        </Link>
+      </h3>
+
+      <p
+        className={`mt-2 text-sm leading-6 text-slate-600 ${
+          featured ? "line-clamp-3" : "line-clamp-2"
+        }`}
+      >
+        {blog.description}
+      </p>
+
+      <div className="mt-auto flex items-center gap-2.5 pt-5">
+        <Avatar
+          name={blog.author.username}
+          src={blog.author.avatar}
+          size="sm"
+        />
+        <div className="min-w-0 text-xs text-slate-500">
+          <Link
+            to={`/profile/${blog.author.username}`}
+            className="font-semibold text-slate-700 hover:text-indigo-600"
+          >
+            {blog.author.username}
+          </Link>
+          <div className="flex items-center gap-1.5">
+            <time dateTime={blog.createdAt}>{formatDate(blog.createdAt)}</time>
+            <span aria-hidden="true">·</span>
+            <span>{blog.readTime} min read</span>
           </div>
-          {isAuthor ? (
-            <div className="flex gap-2">
-              <button
-                className="text-blue-600 text-sm hover:underline"
-                onClick={() => /* view details */}
-              >
-                View
-              </button>
-              <button
-                className="text-red-600 text-sm hover:underline"
-                onClick={() => /* delete */}
-              >
-                Delete
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Tags */}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {blog.tags?.map((tag: string) => (
-            <span
-              key={tag}
-              className="inline-flex items-center px-2 py-1 rounded-full text-xs border border-gray-300 bg-gray-100 text-gray-700"
-            >
-              #{tag}
-            </span>
-          ))}
-        </div>
-
-        {/* Metadata */}
-        <div className="mt-4 flex items-center text-xs text-gray-500">
-          <span>
-            {readTime} min read
-          </span>
-          <span className="mx-2">|</span>
-          <span>{formattedDate}</span>
         </div>
       </div>
-    </div>
+    </article>
   );
-};
-
-export default BlogCard;
+}

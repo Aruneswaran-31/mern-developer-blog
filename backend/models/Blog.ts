@@ -1,19 +1,32 @@
-import mongoose, { Schema, model } from "mongoose";
-import User from "./User";
+import { Schema, model, type Document, type Model, type Types } from "mongoose";
 
-interface IBlog {
+export interface IBlog extends Document {
+  _id: Types.ObjectId;
   title: string;
   slug: string;
   description: string;
   markdown: string;
-  coverImage?: string;
+  coverImage: string;
   tags: string[];
-  author: typeof User;
-  publishedAt?: Date;
-  readTime?: number;
+  author: Types.ObjectId;
+  readTime: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-const blogSchema: Schema = new Schema(
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\w]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function readTimeOf(markdown: string): number {
+  const words = markdown.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 200));
+}
+
+const blogSchema = new Schema<IBlog>(
   {
     title: {
       type: String,
@@ -21,75 +34,48 @@ const blogSchema: Schema = new Schema(
       trim: true,
       maxlength: [100, "Title must be at most 100 characters"],
     },
-    slug: {
-      type: String,
-      required: [true, "Slug is required"],
-      unique: true,
-      lowercase: true,
-    },
+    slug: { type: String, required: true, unique: true, lowercase: true },
     description: {
       type: String,
       required: [true, "Description is required"],
       trim: true,
     },
-    markdown: {
-      type: String,
-      required: [true, "Markdown content is required"],
-    },
-    coverImage: {
-      type: String,
-      default: "",
-    },
-    tags: {
-      type: [String],
-      default: [],
-    },
-    author: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    publishedAt: {
-      type: Date,
-      default: null,
-    },
-    readTime: {
-      type: Number,
-      default: 0,
-    },
+    markdown: { type: String, required: [true, "Content is required"] },
+    coverImage: { type: String, default: "" },
+    tags: { type: [String], default: [], index: true },
+    author: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    readTime: { type: Number, default: 1 },
   },
   { timestamps: true }
 );
 
-// Generate slug from title before saving
+// Derived fields: unique slug (only when the title changes) and read time.
 blogSchema.pre("save", async function (next) {
-  const blog = this as any;
-  if (!blog.isModified("title")) return next();
+  if (this.isModified("title") || !this.slug) {
+    const base = slugify(this.title);
+    let candidate = base;
+    let suffix = 1;
 
-  // Simple slug generation
-  const slug = blog.title
-    .toLowerCase()
-    .replace(/[^\w]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    // Loop instead of trusting a single lookup so concurrent posts stay unique.
+    // eslint-disable-next-line no-await-in-loop
+    while (await this.model("Blog").exists({ slug: candidate, _id: { $ne: this._id } })) {
+      suffix += 1;
+      candidate = `${base}-${suffix}`;
+    }
 
-  // Check for unique slug
-  const existingBlog = await Blog.findOne({ slug });
-  if (existingBlog) {
-    blog.slug = `${slug}-${Date.now()}`;
-  } else {
-    blog.slug = slug;
+    this.slug = candidate;
   }
+
+  if (this.isModified("markdown")) {
+    this.readTime = readTimeOf(this.markdown);
+  }
+
   next();
 });
 
-// Calculate read time based on word count (average reading speed: 200 words/min)
-blogSchema.methods.calculateReadTime = function (): number {
-  const words = this.markdown
-    .split(/\s+/)
-    .filter((word: string) => word.length > 0);
-  this.readTime = Math.max(1, Math.ceil(words.length / 200));
-};
+blogSchema.index({ createdAt: -1 });
+blogSchema.index({ title: "text", description: "text" });
 
-const Blog = model<IBlog>("Blog", blogSchema);
+const Blog: Model<IBlog> = model<IBlog>("Blog", blogSchema);
 
 export default Blog;
