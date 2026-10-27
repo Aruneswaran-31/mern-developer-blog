@@ -367,6 +367,16 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function normaliseTags(tags: string[]): string[] {
+  return [
+    ...new Set(
+      tags
+        .map((tag) => tag.trim().toLowerCase().replace(/\s+/g, "-"))
+        .filter(Boolean)
+    ),
+  ];
+}
+
 function readTimeOf(markdown: string): number {
   const words = markdown.split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(words / 200));
@@ -468,7 +478,7 @@ export const demo = {
       description: input.description,
       markdown: input.markdown,
       coverImage: input.coverImage ?? "",
-      tags: input.tags.map((t) => t.toLowerCase()),
+      tags: normaliseTags(input.tags),
       author: {
         _id: user.id,
         username: user.username,
@@ -493,7 +503,7 @@ export const demo = {
     blog.title = input.title;
     blog.description = input.description;
     blog.markdown = input.markdown;
-    blog.tags = input.tags.map((t) => t.toLowerCase());
+    blog.tags = normaliseTags(input.tags);
     blog.readTime = readTimeOf(input.markdown);
     save(db);
     return blog;
