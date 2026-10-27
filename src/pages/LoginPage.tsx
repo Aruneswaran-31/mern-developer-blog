@@ -66,7 +66,9 @@ export default function LoginPage() {
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
             <p className="font-semibold">Demo mode</p>
             <p className="mt-1">
-              The API is offline, so accounts live in this browser. Try{" "}
+              The API is offline, so accounts live in this browser only. You can
+              sign up with any email on the register page, or use the sample
+              account:{" "}
               <button
                 type="button"
                 onClick={() => {

@@ -40,3 +40,6 @@ coverage/
 # Cache
 .cache/
 .vite/
+
+# Local development database (npm run server:dev)
+.data/

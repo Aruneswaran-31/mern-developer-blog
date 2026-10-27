@@ -61,7 +61,7 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {mode === "demo" && (
             <span
-              title="The Express/MongoDB API is not running, so the app is using its built-in demo data."
+              title="The Express/MongoDB API is not running, so accounts and articles are stored in this browser. Connect MongoDB to share them."
               className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 md:inline"
             >
               demo data

@@ -50,27 +50,41 @@ Open <http://localhost:3000>.
 > The UI runs in **demo mode** when the API is not reachable: articles and accounts are stored in
 > `localStorage` so you can explore the whole product without a database. The navbar shows a
 > `demo data` badge whenever this fallback is active.
+>
+> Demo mode is only a preview — accounts live in a single browser. Run
+> `npm run server:dev` (step 3) for real, shared accounts.
 
 Demo sign-in: `arun@devlog.dev` / `password123`
 
-### 3. Run the full stack
+### 3. Run the full stack (real accounts)
 
-Create a `.env` file (see `.env.example`):
+In a second terminal:
+
+```bash
+npm run server:dev
+```
+
+This starts the Express API on port 4000 backed by a local MongoDB that is
+downloaded and managed automatically, so you do **not** need to install MongoDB.
+Data is written to `.data/mongodb`, so accounts and articles survive restarts.
+As soon as `/api/health` responds, the client switches from demo data to the real
+database — the `demo data` badge disappears and **any new user can register and
+sign in from any browser**.
+
+To use a hosted database instead (for example a MongoDB Atlas free cluster), create
+a `.env` file from `.env.example` and run the plain server:
 
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/devlog
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/devlog
 JWT_SECRET=replace-with-a-long-random-string
 PORT=4000
 CLIENT_ORIGIN=http://localhost:3000
 ```
 
-Then start the API in a second terminal:
-
 ```bash
 npm run server
 ```
 
-With the API healthy at `/api/health`, the client talks to MongoDB instead of the demo store.
 Vite proxies `/api` to `http://localhost:4000` during development.
 
 ## Scripts
@@ -80,7 +94,8 @@ Vite proxies `/api` to `http://localhost:4000` during development.
 | `npm run dev` | Start the Vite dev server on port 3000 |
 | `npm run build` | Build the production bundle into `dist/` |
 | `npm run preview` | Preview the production build |
-| `npm run server` | Run the Express API with hot reload (`tsx watch`) |
+| `npm run server:dev` | Express API + automatic local MongoDB (no install needed) |
+| `npm run server` | Express API against `MONGODB_URI` (Atlas, local mongod, …) |
 
 ## API reference
 

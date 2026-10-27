@@ -73,7 +73,8 @@ export default function RegisterPage() {
         {mode === "demo" && (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
             <span className="font-semibold">Demo mode.</span> The API is offline,
-            so this account is stored in your browser only.
+            so this account is stored in your browser only. Anyone can sign up
+            right now — connect MongoDB to make accounts shared and permanent.
           </div>
         )}
 

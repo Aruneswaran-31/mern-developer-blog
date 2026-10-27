@@ -64,6 +64,13 @@ router.post("/register", async (req, res) => {
       user: publicUser(user),
     });
   } catch (error) {
+    // Unique index race: another request created the account first.
+    if ((error as { code?: number }).code === 11000) {
+      return res
+        .status(400)
+        .json({ message: "An account with that email or username exists" });
+    }
+
     const message = error instanceof Error ? error.message : "Server error";
     return res.status(500).json({ message });
   }

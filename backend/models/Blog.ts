@@ -49,28 +49,34 @@ const blogSchema = new Schema<IBlog>(
   { timestamps: true }
 );
 
-// Derived fields: unique slug (only when the title changes) and read time.
-blogSchema.pre("save", async function (next) {
+// The slug must exist before validation runs, so it is derived in a
+// pre('validate') hook rather than in pre('save').
+blogSchema.pre("validate", async function () {
   if (this.isModified("title") || !this.slug) {
-    const base = slugify(this.title);
+    const base = slugify(this.title || "") || "untitled";
     let candidate = base;
     let suffix = 1;
 
     // Loop instead of trusting a single lookup so concurrent posts stay unique.
     // eslint-disable-next-line no-await-in-loop
-    while (await this.model("Blog").exists({ slug: candidate, _id: { $ne: this._id } })) {
+    while (
+      await this.model("Blog").exists({
+        slug: candidate,
+        _id: { $ne: this._id },
+      })
+    ) {
       suffix += 1;
       candidate = `${base}-${suffix}`;
     }
 
     this.slug = candidate;
   }
+});
 
-  if (this.isModified("markdown")) {
-    this.readTime = readTimeOf(this.markdown);
+blogSchema.pre("save", async function () {
+  if (this.isModified("markdown") || !this.readTime) {
+    this.readTime = readTimeOf(this.markdown || "");
   }
-
-  next();
 });
 
 blogSchema.index({ createdAt: -1 });
